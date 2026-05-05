@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msinteract"
+dynamic = ["version"]
+authors = [
+    {name = "Nick Brown", email = "nick.brown@carleton.ca"}
+]
+description = "Classes for MESH-SVS2"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Operating System :: POSIX",
+    "Programming Language :: Python",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "pandas",
+    "numpy",
+    "setuptools"
+]
+
+[project.urls]
+Homepage = "https://github.com/geocryology/msinteract"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+[tool.setuptools.dynamic]
+version = {attr = "msinteract.version.__version__"}
