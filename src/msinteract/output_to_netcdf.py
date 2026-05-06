@@ -1,8 +1,3 @@
-"""
-This script is modified from the original script created in the test_case directory of the mesh-svs repository. 
-It is used to convert the outputs of MESH-SVS (in CSV format) to a NetCDF file.
- The script reads the CSV files, processes the data, and writes it to a NetCDF file with appropriate encoding. The script also handles cumulated variables that are reset daily by MESH-SVS, ensuring that the correct cumulative values are used in the output NetCDF file. The user can specify the land surface scheme (svs1 or svs2) and optionally provide start and end dates for trimming the dataset before writing to NetCDF.
-"""
 import os,shutil,pdb,glob
 import pandas as pd
 import xarray as xr
@@ -39,109 +34,112 @@ def main(args):
 
     for ific,fic in enumerate(list_fic):
 
-            # Type of file
-            fic_type = fic.split('_')[1]
+        # Type of file
+        fic_type = fic.split('_')[1]
 
-            df= pd.read_csv(fic,skipinitialspace=True)
+        df= pd.read_csv(fic,skipinitialspace=True)
 
-            # Create date block to generate time (see https://stackoverflow.com/questions/48587595/convert-julian-dates-to-normal-dates-in-a-dataframe)
-            df['date_block'] = df['YEAR'].astype(str)+"-"+df['JDAY'].astype(str)+"-"+df['HOUR'].astype(str)
-            df['time'] = pd.to_datetime(df['date_block'], format='%Y-%j-%H')
-            #Create time index
-            df.index = pd.DatetimeIndex(df.time)
-            #Remove unnecessary variables
-            df = df.drop(columns=['YEAR', 'JDAY','HOUR','MINS','date_block','time'])
+        # Create date block to generate time (see https://stackoverflow.com/questions/48587595/convert-julian-dates-to-normal-dates-in-a-dataframe)
+        df['date_block'] = df['YEAR'].astype(str)+"-"+df['JDAY'].astype(str)+"-"+df['HOUR'].astype(str)
+        df['time'] = pd.to_datetime(df['date_block'], format='%Y-%j-%H')
+        #Create time index
+        df.index = pd.DatetimeIndex(df.time)
+        #Remove unnecessary variables
+        df = df.drop(columns=['YEAR', 'JDAY','HOUR','MINS','date_block','time'])
 
-            # get rid of last columns 
-            df = df.iloc[:, :-1]
+        # get rid of last columns 
+        df = df.iloc[:, :-1]
 
-            # Get list of columns 
-            col = list(df.columns)
-            col_short = []
-            for nam in col:
-                    ss = nam.split('_')
-                    if(ss[-1].isnumeric()):
-                            col_short.append('_'.join(ss[:-1]))
+        # Get list of columns 
+        col = list(df.columns)
+        col_short = []
+        for nam in col:
+            ss = nam.split('_')
+            if(ss[-1].isnumeric()):
+                    col_short.append('_'.join(ss[:-1]))
+            else:
+                    col_short.append(nam)
+
+        var_ref = set(col_short)
+
+        if(len(var_ref) == len(col_short)): # File containing multilayer variables
+            da = df.to_xarray()
+        else:
+            da_int = df.to_xarray()
+
+            for ivar, var in enumerate(var_ref):
+
+                    mask = [var == tt for tt in col_short]
+                    lvar = np.array(col)[mask].tolist()
+                    da_sel = da_int[lvar]  # Extract relevant data
+
+                    nlayer = len(da_sel)
+
+                    if(nlayer>1):
+                        lis_layer = np.arange(0,nlayer)
+                        yy=np.zeros((len(da_sel.time),nlayer))
+
+                        if(var in ['TGROUND','TVEG']):
+                            name_layer = 'fr_layer'
+                        elif(var in ['WATFL']):
+                            name_layer = 'soil_interf'                                        
+                        else:
+                            name_layer = fic_type+'_layer'
+                        da_var = xr.DataArray(yy,coords={'time':da_sel.time,name_layer:lis_layer},dims=('time',name_layer))
+
+                        for ilayer,var_sel in enumerate(lvar):
+                            da_var[:,ilayer] = da_sel[var_sel].values
+                        da_var.name = var
+                        da_var.to_dataset()
+                    else: 
+                        da_var = da_sel 
+
+
+                    if(ivar ==0):
+                        da=da_var
                     else:
-                            col_short.append(nam)
+                        da=xr.merge([da,da_var])
 
-            var_ref = set(col_short)
-
-            if(len(var_ref) == len(col_short)): # File containing multilayer variables
-                    da = df.to_xarray()
-            else:
-                    da_int = df.to_xarray()
-
-                    for ivar, var in enumerate(var_ref):
-
-                            mask = [var == tt for tt in col_short]
-                            lvar = np.array(col)[mask].tolist()
-                            da_sel = da_int[lvar]  # Extract relevant data
-
-                            nlayer = len(da_sel)
-
-                            if(nlayer>1):
-                                    lis_layer = np.arange(0,nlayer)
-                                    yy=np.zeros((len(da_sel.time),nlayer))
-
-                                    if(var in ['TGROUND','TVEG']):
-                                            name_layer = 'fr_layer'
-                                    elif(var in ['WATFL']):
-                                            name_layer = 'soil_interf'                                        
-                                    else:
-                                            name_layer = fic_type+'_layer'
-                                    da_var = xr.DataArray(yy,coords={'time':da_sel.time,name_layer:lis_layer},dims=('time',name_layer))
-
-                                    for ilayer,var_sel in enumerate(lvar):
-                                            da_var[:,ilayer] = da_sel[var_sel].values
-                                    da_var.name = var
-                                    da_var.to_dataset()
-                            else: 
-                                    da_var = da_sel 
-
-
-                            if(ivar ==0):
-                                    da=da_var
-                            else:
-                                    da=xr.merge([da,da_var])
-
-            if(ific ==0):
-                    ref=da
-            else:
-                    ref=xr.merge([ref,da])
+        if(ific ==0):
+                ref=da
+        else:
+                ref=xr.merge([ref,da])
 
     # List of cumulated variable that need to be reprocessed to handle the fact that they are reset to zero 
     # every day at 12 UTC by MESH-SVS (to mimic GEM-Hydro daily integration cycle)
     var_cum=['RSNOW_AC','LAT_AC','ROF_AC','DRA_AC','EVP_AC','ESNCAF','RSNV_AC']
 
     for var in var_cum:
-            if var in ref.data_vars:
-                    #Get the hourly increase from the cumulated values
-                    ext = ref[var].diff(dim='time', label='upper')
+        if var in ref.data_vars:
+                #Get the hourly increase from the cumulated values
+                ext = ref[var].diff(dim='time', label='upper')
 
-                    # Extract data at 13 UTC        
-                    mm=ext.time.dt.hour==13
-                    ref_var = ref[var][1:]
-                    
-                    # Adjust the houlry increase at 13 UTC
-                    ext.loc[dict(time=ext.time[mm])] = ref_var[mm].values
+                # Extract data at 13 UTC        
+                mm=ext.time.dt.hour==13
+                ref_var = ref[var][1:]
+                
+                # Adjust the houlry increase at 13 UTC
+                ext.loc[dict(time=ext.time[mm])] = ref_var[mm].values
 
-                    # Compute cumulated values
-                    ext = ext.cumsum()
+                # Compute cumulated values
+                ext = ext.cumsum()
 
-                    # Update value in NetCDf file so that the correct cumulated values is used. 
-                    ref[var][1:] = ext[:]
+                # Update value in NetCDf file so that the correct cumulated values is used. 
+                ref[var][1:] = ext[:]
     
     # Write netcdf   
     encoding = generate_encodings(ref) 
     netcdf_file_out = 'out_'+lss+'.nc'
+
+    if args.only:
+        ref = ref[args.only]
 
     # Trim the dataset to the specified start and end dates if provided
     if args.start:
         ref = ref.sel(time=slice(args.start, None))
     if args.end:        
         ref = ref.sel(time=slice(None, args.end))
-        
+
     ref.to_netcdf(netcdf_file_out)
 
 
@@ -155,6 +153,8 @@ if __name__ == "__main__":
     parser.add_argument('lss', type=str, help='Land surface scheme (svs1 or svs2)')
     parser.add_argument('--start', help='Date to start export (format YYYY-MM-DD)', default=None)
     parser.add_argument('--end', help='Date to end export (format YYYY-MM-DD)', default=None)
+    parser.add_argument('--only', nargs='*', help='List of variables to include in the export (default: all variables)', default=None)
+
     
     args = parser.parse_args()
     
