@@ -107,6 +107,6 @@ def mesh_directory_to_soil_column(directory: Union[str, PathLike], lexicon=None)
             layers[i][f"svs2::{param}"] = value
             
     column = SoilColumn(layers=[Layer(l) for l in layers])
-    apply_semantic_roles(column, lexicon=lexicon)  
+    column = apply_semantic_roles(column, lexicon=lexicon)  
 
     return column
