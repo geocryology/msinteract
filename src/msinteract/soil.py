@@ -1,7 +1,6 @@
 import warnings
 import numpy as np
 
-
 """ MESH_input_soil_levels.txt 
       0.05      0.05 !> delz(1)/dl_svs(1)
       0.05       0.1 !> delz(2)/dl_svs(2)

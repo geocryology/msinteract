@@ -5,6 +5,7 @@ from typing import Union, Optional
 
 from groundmodel.lexicon import get_lexicon, Lexicon
 from groundmodel.core.column import SoilColumn, StochasticSoilColumn
+from groundmodel.core.layer import Layer
 from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
 
 from .soil import SoilLevels
@@ -79,4 +80,33 @@ def write_soil_column_to_directory(soil_column: SoilColumn,
         from msinteract.run_options import set_run_option_flag
         n_layers = len(soil_column.layers)
         set_run_option_flag(Path(directory, "MESH_input_run_options.ini"), "NRSOILAYEREADFLAG", str(n_layers))   # is this a typo?
-        
+
+
+def mesh_directory_to_soil_column(directory: Union[str, PathLike], lexicon=None) -> SoilColumn:
+    """Reads soil column properties from MESH-SVS2 input files in a directory."""
+    soil_levels_file = Path(directory,  "MESH_input_soil_levels.txt")
+    parameters_file = Path(directory, "MESH_parameters.txt")
+
+    lexicon = get_lexicon(lexicon)
+
+    soil_levels = SoilLevels(soil_levels_file)
+    params = MeshParameters(parameters_file)
+
+    thicknesses = soil_levels.layer_thicknesses
+    layers = [{} for _ in thicknesses]
+    params = {param: params.get(param) for param in params.SOIL_PARAMS if params.get(param) is not None}
+    
+    for i, t in enumerate(thicknesses):
+        layers[i]["svs2::__layer_thickness"] = t
+        for param, values in params.items():
+            if i >= len(values):  # in MESH file, last value applies to all deeper layers
+                value = values[-1]
+            else:
+                value = values[i]
+
+            layers[i][f"svs2::{param}"] = value
+            
+    column = SoilColumn(layers=[Layer(l) for l in layers])
+    apply_semantic_roles(column, lexicon=lexicon)  
+
+    return column
