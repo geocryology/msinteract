@@ -1,57 +1,35 @@
 import re
 import os
+import datetime
 
-def read_run_option_flag(file_path, key):
+class InputRunOptions:
     """
-    Searches for a key and returns its value.
-    Example: 'SHDFILEFLAG' -> '2'
+    Class to manage reading and updating run option flags in MESH-SVS2 input files.
     """
-    # Pattern: Line start, optional whitespace, the key, 
-    # then capture everything until a comment (#) or end of line.
-    pattern = rf"^\s*{re.escape(key)}\s+([^#\n\r]+)"
-    
-    try:
-        with open(file_path, 'r') as f:
-            for line in f:
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    return match.group(1).strip()
-    except FileNotFoundError:
-        return None
-    return None
 
+    def __init__(self, file_path):
+        self.file_path = file_path
+    
+    def __getitem__(self, key):
+        return self.get_flag(key)
+    
+    def get_flag(self, key):
+        raise NotImplementedError("get_flag method is not implemented yet.")
 
-def set_run_option_flag(file_path, key, value):
-    """
-    Updates an existing key with a new value while preserving 
-    the trailing comments and structure.
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Target file {file_path} not found.")
+    def set_flag(self, key, value):
+        raise NotImplementedError("set_flag method is not implemented yet.") 
 
-    # Pattern: (Key + space) (Value) (Optional comment/space)
-    # Group 1: Key and leading space
-    # Group 2: The old value (to be replaced)
-    # Group 3: Everything after the value (comments, etc)
-    pattern = rf"(^\s*{re.escape(key)}\s+)([^#\n\r]+)(.*)"
+    def get_output_directory(self):
+        raise NotImplementedError("get_output_directory method is not implemented yet.")
     
-    lines = []
-    found = False
+    def get_start_date(self):
+        raise NotImplementedError("get_start_date method is not implemented yet.")
     
-    with open(file_path, 'r') as f:
-        for line in f:
-            match = re.search(pattern, line, re.IGNORECASE)
-            if match:
-                # Reconstruct line: Key + New Value + Old Comments
-                new_line = f"{match.group(1)}{value}\t{match.group(3).strip()}\n"
-                lines.append(new_line)
-                found = True
-            else:
-                lines.append(line)
+    def get_end_date(self) -> datetime.datetime:
+        raise NotImplementedError("get_end_date method is not implemented yet.")
     
-    if found:
-        with open(file_path, 'w') as f:
-            f.writelines(lines)
-        print(f"Updated '{key}' to '{value}' in {file_path}")
-    
-    return found
+    def set_start_date(self, start_date: datetime.datetime):
+        raise NotImplementedError("set_start_date method is not implemented yet.")
+
+    def set_end_date(self, end_date: datetime.datetime):
+        raise NotImplementedError("set_end_date method is not implemented yet.")
