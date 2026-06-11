@@ -1,6 +1,7 @@
 import re
 import os
 import datetime
+from typing import Optional
 
 
 class InputRunOptions:
@@ -30,6 +31,7 @@ class InputRunOptions:
         return self.get_flag(key)
 
     def __setitem__(self, key, value):
+        """Set a control flag using dict-style write access (``obj["FLAG"] = "val"``)."""
         self.set_flag(key, value)
 
     # ------------------------------------------------------------------
@@ -214,7 +216,7 @@ class InputRunOptions:
             return f"{nums} {comment}\n"
         return f"{nums}\n"
 
-    def get_start_date(self):
+    def get_start_date(self) -> Optional[datetime.datetime]:
         """Return the simulation start date as :class:`datetime.datetime`.
 
         Returns ``None`` when all fields are zero (i.e. start from first
@@ -225,7 +227,7 @@ class InputRunOptions:
         year, doy, hour, minute = self._parse_time_line(lines[start_idx])
         return self._time_to_datetime(year, doy, hour, minute)
 
-    def get_end_date(self) -> datetime.datetime:
+    def get_end_date(self) -> Optional[datetime.datetime]:
         """Return the simulation end/stop date as :class:`datetime.datetime`.
 
         Returns ``None`` when all fields are zero (i.e. run until driving
