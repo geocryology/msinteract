@@ -1,12 +1,17 @@
 from pathlib import Path
 import logging
+import numpy as np
 from os import PathLike
 from typing import Union, Optional
+import warnings
 
 from groundmodel.lexicon import get_lexicon, Lexicon
 from groundmodel.core.column import SoilColumn, StochasticSoilColumn
 from groundmodel.core.layer import Layer
+from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
 from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
+
+from msinteract.run_options import InputRunOptions
 
 from .soil import SoilLevels
 from .parameters import MeshParameters
@@ -51,7 +56,7 @@ def write_soil_column(soil_column: SoilColumn,
                       parameters_file:  Union[str, PathLike], 
                       lexicon: Optional[Union[str, Lexicon]]=None):
     if isinstance(soil_column, StochasticSoilColumn):
-        raise ValueError("Stochastic SoilColumns cannot be written directly to MESH-SVS2 input files.")
+        raise ValueError("Stochastic SoilColumns cannot be written directly to MESH-SVS2 input files. Realize first")
 
     lexicon = get_lexicon(lexicon)
     apply_semantic_roles(soil_column)
@@ -59,8 +64,40 @@ def write_soil_column(soil_column: SoilColumn,
     column_thicknesses = soil_column.layer_thicknesses
     current_thicknesses = SoilLevels(soil_levels_file).layer_thicknesses.tolist()
     
+    if not len(current_thicknesses) == len(column_thicknesses) or not np.allclose(current_thicknesses, column_thicknesses):
+        warnings.warn(f"Layer thicknesses {column_thicknesses} do not match soil levels {current_thicknesses}.")
+        run_options_file = Path(parameters_file).with_name("MESH_input_run_options.ini")
+        rediscretize_mesh(soil_levels_file, parameters_file, run_options_file, column_thicknesses)
+    
     _write_to_parameters(soil_column, parameters_file, current_thicknesses)
     _write_to_soil_levels(column_thicknesses, soil_levels_file)
+
+
+def rediscretize_mesh(soil_levels_file:str, parameters_file:str, run_options_file:str, new_thicknesses: list[float]):
+    old_levels = SoilLevels(soil_levels_file)
+    
+    # Write new soil levels
+    new_levels = SoilLevels()
+    for dz in new_thicknesses:
+        new_levels._add_layer(delz=dz)
+    
+    # Update parameter values
+    params = MeshParameters(parameters_file)
+    for var in params.SOIL_PARAMS:
+        source_values = np.atleast_1d(params.get(var))
+        new_values = resample_properties(target_z=thickness_to_midpoint(new_thicknesses),
+                                         target_dz=new_thicknesses,
+                                         source_thicknesses=old_levels.layer_thicknesses,
+                                         source_values=source_values)
+        params.set(var, new_values)
+        
+
+    runopts = InputRunOptions(run_options_file)
+    runopts.set_flag("NRSOILAYEREADFLAG", str(len(new_thicknesses)))
+    
+    # Write updated files
+    params.write(parameters_file)
+    new_levels.write(soil_levels_file)
 
 
 def write_soil_column_to_directory(soil_column: SoilColumn,
