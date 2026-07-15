@@ -3,7 +3,6 @@ import logging
 import numpy as np
 from os import PathLike
 from typing import Union, Optional
-import warnings
 
 from groundmodel.lexicon import get_lexicon, Lexicon
 from groundmodel.core.column import SoilColumn, StochasticSoilColumn
@@ -24,7 +23,7 @@ def _write_to_soil_levels(thicknesses, soil_levels_file):
     Write values to soil levels file, overwriting existing file if it exists. 
     """
     if Path(soil_levels_file).exists():
-        logger.warning(f"File '{soil_levels_file}' already exists. It will be overwritten.")
+        logger.debug(f"File '{soil_levels_file}' already exists. It will be overwritten.")
     
     soil_levels = SoilLevels.from_delz(thicknesses)
     soil_levels.write(soil_levels_file)
@@ -46,7 +45,7 @@ def _write_to_parameters(soil_column: SoilColumn, parameters_file: Union[str, Pa
         if f"svs2::{param}" in column_props:
             value = soil_column.get_property(f"svs2::{param}")
             params.set(param, value)
-            print(f"Set parameter '{param}' to value '{value}' from soil column property 'svs2::{param}'")
+            logger.debug(f"Set parameter '{param}' to value '{value}' from soil column property 'svs2::{param}'")
 
     params.write(parameters_file)
 
@@ -65,10 +64,22 @@ def write_soil_column(soil_column: SoilColumn,
     current_thicknesses = SoilLevels(soil_levels_file).layer_thicknesses.tolist()
     
     if not len(current_thicknesses) == len(column_thicknesses) or not np.allclose(current_thicknesses, column_thicknesses):
-        warnings.warn(f"Layer thicknesses {column_thicknesses} do not match soil levels {current_thicknesses}.")
+        logger.debug(f"Layer thicknesses {column_thicknesses} do not match soil levels {current_thicknesses}. Will resample.")
         run_options_file = Path(parameters_file).with_name("MESH_input_run_options.ini")
         rediscretize_mesh(soil_levels_file, parameters_file, run_options_file, column_thicknesses)
     
+    # Fill mising data in input soil column.
+    current_params = None
+    for var in soil_column.properties():
+        column_values = np.asarray(soil_column.extract(var))
+        missing_values = np.isnan(column_values)
+        if np.any(missing_values):
+            logger.info(f"Property '{var}' has missing values in Column {soil_column.name}. Filling with existing values.")
+            current_params = current_params or MeshParameters(parameters_file)
+            current_values = np.atleast_1d(current_params.get(var.split("::")[1]))
+            new_data = np.where(missing_values, current_values, column_values)
+            soil_column.set_property(var, new_data)
+
     _write_to_parameters(soil_column, parameters_file, current_thicknesses)
     _write_to_soil_levels(column_thicknesses, soil_levels_file)
 
@@ -85,6 +96,8 @@ def rediscretize_mesh(soil_levels_file:str, parameters_file:str, run_options_fil
     params = MeshParameters(parameters_file)
     for var in params.SOIL_PARAMS:
         source_values = np.atleast_1d(params.get(var))
+        if len(source_values) < len(old_levels.layer_thicknesses):  # in MESH file, last value applies to all deeper layers
+            source_values = np.pad(source_values, (0, len(old_levels.layer_thicknesses) - len(source_values)), 'edge')
         new_values = resample_properties(target_z=thickness_to_midpoint(new_thicknesses),
                                          target_dz=new_thicknesses,
                                          source_thicknesses=old_levels.layer_thicknesses,
