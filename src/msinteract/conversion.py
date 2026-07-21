@@ -1,12 +1,15 @@
-from pathlib import Path
 import logging
 import numpy as np
+from pathlib import Path
 from os import PathLike
 from typing import Union, Optional
 
 from groundmodel.lexicon import get_lexicon, Lexicon
 from groundmodel.core.column import SoilColumn, StochasticSoilColumn
+from groundmodel.core.property import PropertySet, Property
+from groundmodel.core.surface import SurfaceProperties
 from groundmodel.core.layer import Layer
+from groundmode.core.site import Site
 from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
 from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
 
@@ -58,7 +61,7 @@ def write_soil_column(soil_column: SoilColumn,
         raise ValueError("Stochastic SoilColumns cannot be written directly to MESH-SVS2 input files. Realize first")
 
     lexicon = get_lexicon(lexicon)
-    apply_semantic_roles(soil_column)
+    soil_column = apply_semantic_roles(soil_column)
 
     column_thicknesses = soil_column.layer_thicknesses
     current_thicknesses = SoilLevels(soil_levels_file).layer_thicknesses.tolist()
@@ -70,7 +73,7 @@ def write_soil_column(soil_column: SoilColumn,
     
     # Fill mising data in input soil column.
     current_params = None
-    for var in soil_column.properties():
+    for var in soil_column.property_names:
         column_values = np.asarray(soil_column.extract(var))
         missing_values = np.isnan(column_values)
         if np.any(missing_values):
@@ -160,3 +163,38 @@ def mesh_directory_to_soil_column(directory: Union[str, PathLike], lexicon=None)
     column = apply_semantic_roles(column, lexicon=lexicon)  
 
     return column
+
+
+def write_surface(surface: SurfaceProperties|PropertySet, parameters_file: Union[str, PathLike], lexicon=None):
+    """Writes surface properties to MESH_parameters.txt file."""
+    param = MeshParameters(parameters_file)
+
+    for key, prop in surface.properties.items():
+        domain, pname = key.split("::")
+        if not domain == "svs2":
+            logger.debug(f"Property '{key}' is not in the 'svs2' domain and will be ignored.")
+            continue
+        
+        if not param.set(pname, prop.value):
+            logger.warning(f"Property '{key}' could not be written to parameters file '{parameters_file}'.")
+        logger.debug(f"Set parameter '{pname}' to value '{prop.value}' from surface property '{key}'")
+
+    param.write(parameters_file)
+
+
+def write_surface_to_directory(surface: SurfaceProperties|PropertySet, directory: Union[str, PathLike], lexicon=None):
+    """Writes surface properties to MESH_parameters.txt file in a directory."""
+    parameters_file = Path(directory, "MESH_parameters.txt")
+    write_surface(surface, parameters_file, lexicon)
+
+
+def write_site_to_directory(site: Site, svs2_directory: Union[str, PathLike], lexicon=None):
+    """Writes site properties to MESH_parameters.txt file."""
+    if not isinstance(site, Site):
+        raise ValueError("Input must be a Site object.")
+
+    if site.soil is not None:
+        write_soil_column_to_directory(site.soil, svs2_directory, lexicon=lexicon)
+    if site.surface is not None:
+        write_surface_to_directory(site.surface, svs2_directory, lexicon=lexicon)
+    
