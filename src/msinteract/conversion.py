@@ -4,18 +4,24 @@ import numpy as np
 from os import PathLike
 from typing import Union, Optional
 
-from groundmodel.lexicon import get_lexicon, Lexicon
-from groundmodel.core.column import SoilColumn, StochasticSoilColumn
-from groundmodel.core.layer import Layer
-from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
-from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
+logger = logging.getLogger(__name__)
 
 from msinteract.run_options import InputRunOptions
-
 from .soil import SoilLevels
 from .parameters import MeshParameters
 
-logger = logging.getLogger(__name__)
+try:
+    from groundmodel.lexicon import get_lexicon, Lexicon
+    from groundmodel.core.column import SoilColumn, StochasticSoilColumn
+    from groundmodel.core.layer import Layer
+    from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
+    from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
+
+    GROUND_MODEL_AVAILABLE = True
+
+except ImportError:
+    GROUND_MODEL_AVAILABLE = False
+    logger.warning("groundmodel is not installed; conversion functionality is disabled.")
 
 
 def _write_to_soil_levels(thicknesses, soil_levels_file):
