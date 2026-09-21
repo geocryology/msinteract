@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from msinteract.run_options import InputRunOptions
 from .soil import SoilLevels
 from .parameters import MeshParameters
+from msinteract.balance_IC_subfreezing import liquid_water_fraction
 
 try:
     from groundmodel.lexicon import get_lexicon, Lexicon
@@ -86,10 +87,25 @@ def write_soil_column(soil_column: SoilColumn,
             new_data = np.where(missing_values, current_values, column_values)
             soil_column.set_property(var, new_data)
 
+    # Equillibrate ice/liquid water content in soil column
+    equillibrate_soil_column(soil_column)
+
     _write_to_parameters(soil_column, parameters_file, current_thicknesses)
     _write_to_soil_levels(column_thicknesses, soil_levels_file)
 
 
+def equillibrate_soil_column(soil_column: SoilColumn):
+    sand = soil_column.get_property("svs2::sand")
+    clay = soil_column.get_property("svs2::clay")
+    tsoil = soil_column.get_property("svs2::tpsoil")
+    twc = soil_column.get_property("svs2::wsoil") + soil_column.get_property("svs2::isoil")
+    lf = liquid_water_fraction(sand,clay,tsoil,twc) 
+    eq_wsoil = lf * twc
+    eq_isoil = twc - eq_wsoil
+    soil_column.set_property("svs2::wsoil", eq_wsoil)
+    soil_column.set_property("svs2::isoil", eq_isoil)
+
+    
 def rediscretize_mesh(soil_levels_file:str, parameters_file:str, run_options_file:str, new_thicknesses: list[float]):
     old_levels = SoilLevels(soil_levels_file)
     
