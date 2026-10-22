@@ -2,6 +2,11 @@ import re
 import numpy as np
 from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
 
+
+def is_namedtuple_instance(obj):
+    return isinstance(obj, tuple) and hasattr(obj, "_fields")
+
+
 class MeshParameters:
     SOIL_PARAMS = ['sand', 'clay', 'wsoil', 'isoil', 'tpsoil']  # shares layer dimension
 
@@ -97,6 +102,8 @@ class MeshParameters:
         """Sets a value, converting NumPy arrays back to space-separated strings."""
         for node in self.nodes:
             if node.get('type') == 'param' and node.get('key') == key:
+                if is_namedtuple_instance(new_value):  # pre-convert named tuples to arrays
+                    new_value = np.array(new_value) 
                 if isinstance(new_value, np.ndarray):
                     # Format floats to avoid excessive decimals if desired
                     node['value'] = " ".join(map(str, new_value.tolist()))

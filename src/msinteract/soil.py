@@ -85,7 +85,7 @@ class SoilLevels:
     def write(self, file):
         with open(file, "w") as f:
             for delz, dl_svs, extra in zip(self._dz, self._dl_svs, self._extra):
-                line = f"{str(delz)}    {str(dl_svs)}    {extra}\n"
+                line = f"{delz:.3f}    {dl_svs:.3f}    {extra}\n"
                 f.write(line)
     
     @classmethod
