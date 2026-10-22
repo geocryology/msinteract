@@ -4,6 +4,7 @@ from pathlib import Path
 from os import PathLike
 from typing import Union, Optional
 
+
 from groundmodel.lexicon import get_lexicon, Lexicon
 from groundmodel.core.column import SoilColumn, StochasticSoilColumn
 from groundmodel.core.property import PropertySet, Property
@@ -12,13 +13,25 @@ from groundmodel.core.layer import Layer
 from groundmode.core.site import Site
 from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
 from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
+logger = logging.getLogger(__name__)
 
 from msinteract.run_options import InputRunOptions
-
 from .soil import SoilLevels
 from .parameters import MeshParameters
+from msinteract.balance_IC_subfreezing import liquid_water_fraction
 
-logger = logging.getLogger(__name__)
+try:
+    from groundmodel.lexicon import get_lexicon, Lexicon
+    from groundmodel.core.column import SoilColumn, StochasticSoilColumn
+    from groundmodel.core.layer import Layer
+    from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
+    from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
+
+    GROUND_MODEL_AVAILABLE = True
+
+except ImportError:
+    GROUND_MODEL_AVAILABLE = False
+    logger.warning("groundmodel is not installed; conversion functionality is disabled.")
 
 
 def _write_to_soil_levels(thicknesses, soil_levels_file):
@@ -83,10 +96,25 @@ def write_soil_column(soil_column: SoilColumn,
             new_data = np.where(missing_values, current_values, column_values)
             soil_column.set_property(var, new_data)
 
+    # Equillibrate ice/liquid water content in soil column
+    equillibrate_soil_column(soil_column)
+
     _write_to_parameters(soil_column, parameters_file, current_thicknesses)
     _write_to_soil_levels(column_thicknesses, soil_levels_file)
 
 
+def equillibrate_soil_column(soil_column: SoilColumn):
+    sand = soil_column.get_property("svs2::sand")
+    clay = soil_column.get_property("svs2::clay")
+    tsoil = soil_column.get_property("svs2::tpsoil")
+    twc = soil_column.get_property("svs2::wsoil") + soil_column.get_property("svs2::isoil")
+    lf = liquid_water_fraction(sand,clay,tsoil,twc) 
+    eq_wsoil = lf * twc
+    eq_isoil = twc - eq_wsoil
+    soil_column.set_property("svs2::wsoil", eq_wsoil)
+    soil_column.set_property("svs2::isoil", eq_isoil)
+
+    
 def rediscretize_mesh(soil_levels_file:str, parameters_file:str, run_options_file:str, new_thicknesses: list[float]):
     old_levels = SoilLevels(soil_levels_file)
     
