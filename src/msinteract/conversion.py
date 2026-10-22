@@ -10,7 +10,7 @@ from groundmodel.core.column import SoilColumn, StochasticSoilColumn
 from groundmodel.core.property import PropertySet, Property
 from groundmodel.core.surface import SurfaceProperties
 from groundmodel.core.layer import Layer
-from groundmode.core.site import Site
+from groundmodel.core.site import Site
 from groundmodel.core.geometry import resample_properties, thickness_to_midpoint
 from groundmodel.logic import apply_semantic_roles, filter_column_by_domain
 logger = logging.getLogger(__name__)
